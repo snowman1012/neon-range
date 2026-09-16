@@ -197,8 +197,9 @@ function shoot() {
 function reload() { if (reloading || ammo === 12) return; reloading = true; update(); toast('재장전'); setTimeout(() => { ammo = 12; reloading = false; update(); }, 950); }
 function start() { running = true; $('#panel').hidden = true; if (matchMedia('(pointer:fine)').matches) canvas.requestPointerLock(); toast(mode === 'boards' ? '사격판 모드' : '이동 허수아비 모드'); }
 function lookRate() { return .00065 + sens * .00165; }
+function turnBy(dx, dy, multiplier = 1) { const r = lookRate() * multiplier; player.yaw += dx * r; player.pitch = Math.max(-.62, Math.min(.62, player.pitch + dy * r)); }
 
-document.addEventListener('mousemove', e => { if (document.pointerLockElement === canvas && running) { const r = lookRate(); player.yaw += e.movementX * r; player.pitch = Math.max(-.62, Math.min(.62, player.pitch + e.movementY * r)); } });
+document.addEventListener('mousemove', e => { if (document.pointerLockElement === canvas && running) turnBy(e.movementX, e.movementY); });
 document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && running && matchMedia('(pointer:fine)').matches) { running = false; $('#panel').hidden = false; } });
 canvas.addEventListener('mousedown', e => { if (e.button === 0) { if (!running) start(); else shoot(); } });
 addEventListener('keydown', e => { keys[e.code] = true; if (e.code === 'KeyR') reload(); }); addEventListener('keyup', e => keys[e.code] = false);
@@ -207,7 +208,12 @@ document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode =
 $('#start').onclick = start; $('#settingsBtn').onclick = () => { running = false; if (document.pointerLockElement) document.exitPointerLock(); $('#panel').hidden = false; };
 function setSens(v) { sens = Math.max(.2, Math.min(3, Math.round(v * 10) / 10)); $('#sensitivity').value = sens; $('#sensitivityValue').value = sens.toFixed(1); localStorage.setItem('rangeSensitivity', String(sens)); }
 $('#sensitivity').oninput = e => setSens(+e.target.value); $('#sensitivity').onchange = e => setSens(+e.target.value); $('#sensDown').onclick = () => setSens(sens - .1); $('#sensUp').onclick = () => setSens(sens + .1); setSens(+(localStorage.getItem('rangeSensitivity') || 1));
-$('#fire').onpointerdown = e => { e.preventDefault(); e.stopPropagation(); shoot(); }; $('#reloadMobile').onpointerdown = e => { e.preventDefault(); e.stopPropagation(); reload(); };
+const fireButton = $('#fire'); let fireId = null, fireX = 0, fireY = 0, autoFire = null;
+function stopFire(e) { if (e && fireId !== null && e.pointerId !== fireId) return; clearTimeout(autoFire); autoFire = null; fireButton.classList.remove('pressed'); fireId = null; }
+fireButton.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); if (!running) { start(); return; } fireId = e.pointerId; fireX = e.clientX; fireY = e.clientY; fireButton.setPointerCapture(e.pointerId); fireButton.classList.add('pressed'); shoot(); const repeat = () => { if (fireId !== null) { shoot(); autoFire = setTimeout(repeat, 135); } }; autoFire = setTimeout(repeat, 260); };
+fireButton.onpointermove = e => { if (e.pointerId !== fireId || !running) return; turnBy(e.clientX - fireX, e.clientY - fireY, 2.15); fireX = e.clientX; fireY = e.clientY; };
+fireButton.onpointerup = fireButton.onpointercancel = stopFire;
+$('#reloadMobile').onpointerdown = e => { e.preventDefault(); e.stopPropagation(); reload(); };
 
 const stick = $('#stick'), knob = stick.querySelector('i');
 function moveStick(e) { const r = stick.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2), limit = r.width * .32, len = Math.hypot(dx, dy) || 1, k = Math.min(1, limit / len), x = dx * k, y = dy * k; moveX = x / limit; moveY = y / limit; knob.style.transform = `translate(${x}px,${y}px)`; }
@@ -215,10 +221,11 @@ stick.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); stick.setP
 function releaseStick(e) { if (stick.hasPointerCapture(e.pointerId)) stick.releasePointerCapture(e.pointerId); moveX = moveY = 0; knob.style.transform = 'translate(0,0)'; }
 stick.onpointerup = releaseStick; stick.onpointercancel = releaseStick;
 
-const lookZone = $('#lookZone'); let lookId = null, lookX = 0, lookY = 0;
-lookZone.onpointerdown = e => { e.preventDefault(); if (!running) { start(); return; } lookId = e.pointerId; lookX = e.clientX; lookY = e.clientY; lookZone.setPointerCapture(e.pointerId); };
-lookZone.onpointermove = e => { if (e.pointerId !== lookId || !running) return; const r = lookRate() * 2.45; player.yaw += (e.clientX - lookX) * r; player.pitch = Math.max(-.62, Math.min(.62, player.pitch + (e.clientY - lookY) * r)); lookX = e.clientX; lookY = e.clientY; };
-lookZone.onpointerup = lookZone.onpointercancel = e => { if (e.pointerId === lookId) lookId = null; };
+const lookZone = $('#lookZone'); let lookId = null, lookX = 0, lookY = 0, lookStartX = 0, lookStartY = 0, lookStartTime = 0, lookDragged = false;
+lookZone.onpointerdown = e => { e.preventDefault(); if (!running) { start(); return; } lookId = e.pointerId; lookX = lookStartX = e.clientX; lookY = lookStartY = e.clientY; lookStartTime = performance.now(); lookDragged = false; lookZone.setPointerCapture(e.pointerId); };
+lookZone.onpointermove = e => { if (e.pointerId !== lookId || !running) return; if (Math.hypot(e.clientX - lookStartX, e.clientY - lookStartY) > 7) lookDragged = true; turnBy(e.clientX - lookX, e.clientY - lookY, 2.15); lookX = e.clientX; lookY = e.clientY; };
+lookZone.onpointerup = e => { if (e.pointerId !== lookId) return; if (!lookDragged && performance.now() - lookStartTime < 260) shoot(); lookId = null; };
+lookZone.onpointercancel = e => { if (e.pointerId === lookId) lookId = null; };
 
 resetTargets(); update(); requestAnimationFrame(frame);
 
