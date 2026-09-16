@@ -208,11 +208,12 @@ document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { mode =
 $('#start').onclick = start; $('#settingsBtn').onclick = () => { running = false; if (document.pointerLockElement) document.exitPointerLock(); $('#panel').hidden = false; };
 function setSens(v) { sens = Math.max(.2, Math.min(3, Math.round(v * 10) / 10)); $('#sensitivity').value = sens; $('#sensitivityValue').value = sens.toFixed(1); localStorage.setItem('rangeSensitivity', String(sens)); }
 $('#sensitivity').oninput = e => setSens(+e.target.value); $('#sensitivity').onchange = e => setSens(+e.target.value); $('#sensDown').onclick = () => setSens(sens - .1); $('#sensUp').onclick = () => setSens(sens + .1); setSens(+(localStorage.getItem('rangeSensitivity') || 1));
-const fireButton = $('#fire'); let fireId = null, fireX = 0, fireY = 0, autoFire = null;
-function stopFire(e) { if (e && fireId !== null && e.pointerId !== fireId) return; clearTimeout(autoFire); autoFire = null; fireButton.classList.remove('pressed'); fireId = null; }
-fireButton.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); if (!running) { start(); return; } fireId = e.pointerId; fireX = e.clientX; fireY = e.clientY; fireButton.setPointerCapture(e.pointerId); fireButton.classList.add('pressed'); shoot(); const repeat = () => { if (fireId !== null) { shoot(); autoFire = setTimeout(repeat, 135); } }; autoFire = setTimeout(repeat, 260); };
-fireButton.onpointermove = e => { if (e.pointerId !== fireId || !running) return; turnBy(e.clientX - fireX, e.clientY - fireY, 2.15); fireX = e.clientX; fireY = e.clientY; };
-fireButton.onpointerup = fireButton.onpointercancel = stopFire;
+const fireButton = $('#fire'); let fireId = null, fireX = 0, fireY = 0, fireStartX = 0, fireStartY = 0, fireDragged = false;
+function stopFire(e, cancelled = false) { if (fireId === null || (e && e.pointerId !== fireId)) return; if (!cancelled && !fireDragged) shoot(); fireButton.classList.remove('pressed'); fireId = null; }
+fireButton.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); if (!running) { start(); return; } fireId = e.pointerId; fireX = fireStartX = e.clientX; fireY = fireStartY = e.clientY; fireDragged = false; fireButton.setPointerCapture(e.pointerId); fireButton.classList.add('pressed'); };
+fireButton.onpointermove = e => { if (e.pointerId !== fireId || !running) return; if (Math.hypot(e.clientX - fireStartX, e.clientY - fireStartY) > 7) fireDragged = true; turnBy(e.clientX - fireX, e.clientY - fireY, 2.15); fireX = e.clientX; fireY = e.clientY; };
+fireButton.onpointerup = e => stopFire(e);
+fireButton.onpointercancel = e => stopFire(e, true);
 $('#reloadMobile').onpointerdown = e => { e.preventDefault(); e.stopPropagation(); reload(); };
 
 const stick = $('#stick'), knob = stick.querySelector('i');
